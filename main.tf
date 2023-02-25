@@ -12,7 +12,7 @@ terraform {
   backend "remote" {
     organization = "gryder-io"
     workspaces {
-      name = "crc-terraform"
+      name = "crc-visitors"
     }
   }
 }
@@ -90,7 +90,23 @@ resource "aws_lambda_function" "crc_visitor_count" {
   source_code_hash = filebase64sha256("lambda_function_payload.zip")
 }
 
+resource "aws_api_gateway_rest_api" "visitors_api" {
+  name = "CloudResumeAPI"
+}
 
+resource "aws_api_gateway_method" "visitor_count_update" {
+  authorization = "NONE"
+  http_method   = "POST"
+  resource_id   = aws_api_gateway_rest_api.visitors_api.root_resource_id
+  rest_api_id   = aws_api_gateway_rest_api.visitors_api.id
+}
+
+resource "aws_api_gateway_integration" "example" {
+  http_method = aws_api_gateway_method.example.http_method
+  resource_id = aws_api_gateway_resource.example.id
+  rest_api_id = aws_api_gateway_rest_api.example.id
+  type        = "MOCK"
+}
 
 
 
