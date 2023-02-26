@@ -87,26 +87,48 @@ resource "aws_lambda_function" "crc_visitor_count" {
   role          = aws_iam_role.crc_lambda_dynamodb.arn
   timeout       = 3
 
-  source_code_hash = filebase64sha256("lambda_function_payload.zip")
+  source_code_hash = data.archive_file.crc_lambda.output_base64sha256
 }
 
 resource "aws_api_gateway_rest_api" "visitors_api" {
   name = "CloudResumeAPI"
 }
 
-resource "aws_api_gateway_method" "visitor_count_update" {
-  authorization = "NONE"
-  http_method   = "POST"
-  resource_id   = aws_api_gateway_rest_api.visitors_api.root_resource_id
+resource "aws_api_gateway_method" "crc_method" {
   rest_api_id   = aws_api_gateway_rest_api.visitors_api.id
+  resource_id   = aws_api_gateway_rest_api.visitors_api.root_resource_id
+  http_method   = "POST"
+  authorization = "NONE"
 }
 
-resource "aws_api_gateway_integration" "example" {
-  http_method = aws_api_gateway_method.example.http_method
-  resource_id = aws_api_gateway_resource.example.id
-  rest_api_id = aws_api_gateway_rest_api.example.id
-  type        = "MOCK"
+resource "aws_api_gateway_integration" "lambda_integration" {
+  rest_api_id             = aws_api_gateway_rest_api.visitors_api.id
+  resource_id             = aws_api_gateway_rest_api.visitors_api.root_resource_id
+  http_method             = aws_api_gateway_method.crc_method.http_method
+  integration_http_method = "POST"
+  type                    = "AWS"
+  uri                     = aws_lambda_function.crc_visitor_count.invoke_arn
 }
 
+resource "aws_api_gateway_deployment" "crc_deployment" {
+  rest_api_id = aws_api_gateway_rest_api.visitors_api.id
 
+  triggers = {
+    redeployment = sha1(jsonencode([
+      aws_api_gateway_rest_api.visitors_api.root_resource_id,
+      aws_api_gateway_method.crc_method.id,
+      aws_api_gateway_integration.lambda_integration.id,
+    ]))
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_api_gateway_stage" "crc_production" {
+  deployment_id = aws_api_gateway_deployment.crc_deployment.id
+  rest_api_id   = aws_api_gateway_rest_api.visitors_api.id
+  stage_name    = "Production"
+}
 
